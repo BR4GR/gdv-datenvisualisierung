@@ -1,0 +1,1557 @@
+---
+title: "gdv"
+author: "Benjamin"
+date: "2025-01-09"
+output: pdf_document
+---
+
+
+# Imports
+
+Um die Daten zu verarbeiten und zu visualisieren haben wir folgende Packages benötigt.
+
+```{r message=FALSE}
+required_packages <- c("tidyverse", "ggmosaic", "GGally", "randomForest", "caret", "ggridges", "cluster", "factoextra", "ggplot2", "sf", "datasauRus") # add more as needed
+
+for (pkg in required_packages) {
+    if (!require(pkg, character.only = TRUE)) {
+        install.packages(pkg)
+        library(pkg, character.only = TRUE)
+    }
+}
+```
+
+```{r}
+
+# Filter for the "dino" dataset from the datasauRus dataset
+dino_data <- datasaurus_dozen %>% filter(dataset == "dino")
+
+# Plot the Datasaurus
+plot <- ggplot(dino_data, aes(x = x, y = y)) +
+  geom_point(size = 2, color = "black") +  # Black points for a similar look
+  theme_minimal() +
+  labs(
+  ) +
+  theme(
+    axis.title = element_blank(),        # Remove axis titles
+    axis.text = element_blank(),         # Remove axis text
+    axis.ticks = element_blank(),        # Remove axis ticks
+    legend.position = "none",            # Remove legend
+    plot.title = element_blank(),        # Remove title
+    plot.subtitle = element_blank(),     # Remove subtitle
+    panel.grid.major = element_blank(),  # Keep grid lines
+    panel.grid.minor = element_blank()   # Remove minor grid lines for a cleaner look
+  )
+ggsave("output/datasaurus.pdf", plot = plot, device = "pdf", width = 5, height = 5)
+plot
+
+```
+
+```{r}
+
+
+# Select a subset of datasets to illustrate different patterns
+selected_datasets <- datasaurus_dozen %>%
+  filter(dataset %in% c("dino", "circle", "bullseye", "x_shape"))
+
+# Process datasets to highlight spatial relationships
+# No data distortion is introduced to ensure expressiveness
+selected_datasets <- selected_datasets %>%
+  mutate(dataset = factor(dataset, levels = c("dino", "circle", "bullseye", "x_shape")))
+
+# Create the visualization
+ggplot(selected_datasets, aes(x = x, y = y)) +
+  geom_point(size = 2, alpha = 0.8, aes(color = dataset)) +  # Ensure spatial patterns are clear
+  facet_wrap(~ dataset, ncol = 2) +  # Hierarchical arrangement to emphasize dataset categories
+  scale_color_manual(values = c("steelblue", "darkorange", "forestgreen", "purple")) +  # Distinct colors for clarity
+  labs(
+    title = "Demonstration of Expressiveness and Effectiveness in Data Visualization",
+    subtitle = "Preprocessed datasets highlight relational patterns while retaining spatial accuracy",
+    x = "X-axis",
+    y = "Y-axis"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 12, face = "italic", hjust = 0.5),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    legend.position = "none"  # Remove legend for focus on visual elements
+  )
+
+```
+
+
+
+
+```{r}
+# Load ggplot2
+library(ggplot2)
+
+# Simplified data for one line, one star, one dot, and one triangle
+data <- data.frame(
+  x = c(0, 0, 1, 1),
+  y = c(0, 1, 0, 1),
+  shape = c(NA, 16, 8, 17),
+  size = c(NA, 35, 35, 35)
+)
+
+# Create plot
+plot <- ggplot(data, aes(x = x, y = y)) +
+  geom_line(color = "blue", size = 2) +
+  geom_point(aes(shape = factor(shape), size = size), color = "red", na.rm = TRUE) +
+  scale_shape_manual(values = c(16, 8, 17)) +  # Circle, Star, Triangle
+  scale_size_identity() +
+  coord_cartesian(xlim = c(-2, 2), ylim = c(-2, 2), expand = FALSE) +
+  theme_void() +  # Remove grid, axis, and text
+  theme(legend.position = "none")  # Remove legend
+
+# Display plot
+print(plot)
+
+
+```
+
+## account Datensatz
+
+```{r}
+accounts <- read.csv("data/account.csv", sep=";")
+
+#Ändern der tschechischen Namen in der Spalte frequency
+accounts <- accounts %>%
+  mutate(frequency = case_when(frequency == "POPLATEK MESICNE" ~ "Monatliche_Ausgabe",
+                               frequency == "POPLATEK TYDNE" ~ "Wöchentliche_Ausgabe",
+                               frequency == "POPLATEK PO OBRATU" ~ "Ausgabe_nach_Transaktion"))
+
+#Frequency in Faktor umwandeln
+accounts <- accounts %>% 
+  mutate(frequency = as.factor(frequency))
+
+# Datum umwandeln
+accounts$date <- ymd(accounts$date)
+
+# spalten umbenennen
+accounts <- accounts %>%
+  rename(opening_date = date,
+         frequency_of_statements = frequency,
+         district_id_account = district_id)
+```
+
+
+
+```{r message=FALSE}
+glimpse(accounts)
+summary(accounts)
+sum(is.na(accounts))
+length(unique(accounts$account_id)) == nrow(accounts)
+```
+
+
+```{r}
+barplot(table(accounts$district_id), main = "Distribution of Accounts by District", xlab = "District ID", ylab = "Number of Accounts")
+```
+
+```{r}
+ggplot(accounts, aes(x = opening_date, fill = as.factor(year(opening_date)))) +
+  geom_histogram(binwidth = 7) +
+  ggtitle("Accounteröffnungen pro Woche") +
+  scale_fill_brewer(palette = "Set1") +
+  labs(fill = "Jahr")
+
+```
+
+```{r}
+card <- read.csv("data/card.csv", sep=";")
+```
+
+
+```{r}
+#Type in Faktor umwandeln
+card <- card %>%
+  rename(card_type = type)
+
+card <- card %>% 
+  mutate(card_type = as.factor(card_type))
+
+# Datum umwandeln
+card$issued <- ymd(substr(card$issued, 1, 6))
+
+glimpse(card)
+summary(card)
+sum(is.na(card))
+length(unique(card$card_id)) == nrow(card)
+```
+
+```{r}
+client <- read.csv("data/client.csv", sep=";")
+
+#Unterscheidung von Mann und Frau anhand vom Geburtsdatum
+client <- client %>%
+  mutate(
+    sex = ifelse((birth_number %% 10000) > 2000, "female", "male")
+  )
+
+#Ändern des Datentyps der Reihe
+client <- client %>% 
+  mutate(sex = as.factor(sex))
+
+#Geburtsdatum bei den Frauen um 5000 subtrahieren. Damit wieder der normale Monat angezeigt wird.
+client$birth_number[client$sex == "female"] <- client$birth_number[client$sex == "female"]-5000
+
+
+#Der <int> wird in ein Datum umgewandelt.
+client <- client %>%
+  mutate(birth_number = birth_number + 19000000)
+client$birth_number <- ymd(client$birth_number)
+
+client <- client %>%
+  rename(birthday = birth_number,
+         district_id_client = district_id)
+
+client$year <- year(client$birthday)
+```
+
+
+```{r}
+glimpse(client)
+summary(client)
+sum(is.na(client))
+length(unique(client$client_id)) == nrow(client)
+```
+
+
+```{r}
+ggplot(client, aes(x = year, fill = sex)) +
+  geom_density(alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "Verteilung der Kunden nach Jahr und Geschlecht",
+       x = "Jahr",
+       y = "Dichte",
+       fill = "Geschlecht")
+
+```
+```{r}
+library(ggplot2)
+
+plot <- ggplot(client, aes(x = year, fill = sex)) +
+  geom_density(alpha = 0.5, color = "black", adjust = 1.2) +
+  scale_fill_manual(
+    values = c("male" = "#3498db", "female" = "#e74c3c"),
+    labels = c("Male", "Female"),
+    name = "Gender"
+  ) +
+  labs(
+    title = "Distribution of Customers by Year and Gender",
+    subtitle = "Density plot of customers' birth years by gender",
+    x = "Year of Birth",
+    y = "Density",
+    fill = "Gender"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 16),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10)
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05)))  # Add padding above the maximum value
+  
+ggsave("output/facetes.pdf", plot = plot, device = "pdf", width = 6, height = 3)
+plot
+```
+
+
+```{r}
+disp <- read.csv("data/disp.csv", sep=";")
+
+#Type in Faktor umwandeln
+disp <- disp %>% 
+  mutate(type = as.factor(type))
+
+#Ausgabe von disp zur Kontrolle
+glimpse(disp)
+summary(disp)
+sum(is.na(disp))
+length(unique(disp$disp_id)) == nrow(disp)
+```
+
+## district Datensatz
+
+Der district Datensatz enthält viele Informationen über jeden Distrikt.
+
+Hier werden alle Spalten mit A angegeben, dies sollen aussagekräftigere Namen ersetzt werden.
+
+Danach sollen noch alle character in andere Formate geändert werden. Die Warnung nach Ausführung des Codes ist auf den Distrikt Jesenik bezogen. Dort ist in der Spalte unemploymant_rate_95 und commited_crimes_95 ein "?" eigetragen, dieser Wert wird mit NA ersetzt.
+
+```{r warning=FALSE}
+district <- read.csv("data/district.csv", sep=";")
+
+#Spaltennamen ändern
+colnames(district) <- c("district_id", "district_name", "region", "inhabitants", "municipalities_less_than_499", "municipalities_500_to_1999", "municipalities_2000_to_9999", "municipalities_10000_plus", "cities", "urban_inhabitants", "average_salary", "unemploymant_rate_95", "unemploymant_rate_96", "enterpreneurs_per_1000", "commited_crimes_95", "commited_crimes_96")
+
+district <- district %>% 
+  mutate(district_name = as.factor(district_name),
+        region = as.factor(region),
+        unemploymant_rate_95 = as.double(unemploymant_rate_95),
+        commited_crimes_95 = as.integer(commited_crimes_95))
+
+```
+
+Kontrolle der geänderten Tabelle.
+
+```{r}
+glimpse(district)
+summary(district)
+sum(is.na(district))
+length(unique(district$A1)) == nrow(district)
+```
+
+
+```{r warning=FALSE}
+district <- district %>%
+  mutate(crimes_per_1000_1995 = commited_crimes_95/inhabitants*1000)
+
+ggplot(district, aes(x = unemploymant_rate_96, y = crimes_per_1000_1995)) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Scatter Plot of Unemployment Rate and Committed Crimes in 1995",
+       x = "Unemployment Rate in 1995",
+       y = "Committed Crimes per 1000 in 1995")
+```
+
+```{r}
+district <- district %>%
+  mutate(crimes_per_1000_1996 = (commited_crimes_96/inhabitants)*1000)
+
+ggplot(district, aes(x = unemploymant_rate_96, y = crimes_per_1000_1996)) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Scatter Plot of Unemployment Rate and Committed Crimes in 1996",
+       x = "Unemployment Rate in 1996",
+       y = "Committed Crimes per 1000 in 1996")
+```
+
+Bei der Betrachtung der beiden Plots fällt auf, dass es keinen merklichen Anstieg gibt, so wie es unsere Hypothese war. Was aber auffällt, ist das der vorderste Punkt, welcher fast keine Arbeitslosigkeit aufzeigt, enorm hoch ist. Bei diesem Punkt handelt es sich wieder um Prag.
+
+## loan Datensatz
+
+Der loan Datensatz ist für uns einer der Interessantesten Datensätze. In ihm sind sämtliche vergebenen Kredite abgelegt. Hier muss nur dem Status einen besseren Namen gegeben werden und in einen Faktor umgewandelt werden.
+
+```{r}
+loan <- read.csv("data/loan.csv", sep=";")
+
+#Ändern der Namen in Status
+loan <- loan %>%
+  mutate(status = case_when(status == "A" ~ "finished_ok",
+                   status == "B" ~ "finished_not_payed",
+                   status == "C" ~ "running_ok",
+                   status == "D" ~ "running_client_in_dept"))
+
+#Status in Faktor ändern
+loan <- loan %>%
+  mutate(status = as.factor(status))
+
+loan <- loan %>%
+  rename(loan_date = date)%>%
+  mutate(loan_date = ymd(loan_date + 19000000))
+```
+
+Kontrolle der Änderungen.
+
+```{r}
+glimpse(loan)
+summary(loan)
+sum(is.na(loan))
+length(unique(loan$loan_id)) == nrow(loan)
+```
+
+
+```{r}
+ggplot(loan, aes(x = amount)) +
+  geom_histogram(binwidth = 10000, color = "blue") +
+  scale_x_continuous(breaks = seq(0, max(loan$amount), by = 50000)) +
+  ggtitle("Betrag der vergebenen Kredite")
+```
+
+
+```{r}
+n = sum(duplicated(loan$account_id))
+print(paste("Es gibt", n, "Accounts, welche zwei mal einen Kredit bezogen haben."))
+```
+
+```{r}
+ggplot(loan, aes(x = duration, y = after_stat(count))) +
+  geom_bar() +
+  labs(
+    title = "Verteilung der Kreditlaufzeiten",
+    subtitle = "nach Anzahl und Dauer der Kredite",
+    x = "Laufzeit in Monaten",
+    y = "Anzahl der Kredite",
+  )
+
+```
+
+```{r}
+
+
+plot <- ggplot(loan, aes(x = duration, y = after_stat(count), fill = as.factor(duration))) +
+  geom_bar(show.legend = FALSE, color = "black") +
+  scale_fill_brewer(palette = "Blues") +
+  labs(
+    title = "Distribution of Loan Durations",
+    subtitle = "Number of loans by duration (in months)",
+    x = "Loan Duration (Months)",
+    y = "Number of Loans"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 16),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    panel.grid.minor = element_blank()
+  )
+
+
+ggsave("output/Counts.pdf", plot = plot, device = "pdf", width = 5, height = 3)
+
+plot
+
+```
+
+
+```{r}
+order <- read.csv("data/order.csv", sep=";")
+
+#K_symbol Werte verständlich machen
+order <- order %>%
+  mutate(k_symbol = case_when(k_symbol == "POJISTNE" ~ "insurrance payment",
+                           k_symbol == "SIPO" ~ "household",
+                           k_symbol == "LEASING" ~ "leasing",
+                           k_symbol == "UVER" ~ "loan payment",
+                           k_symbol == " " ~ NA,))
+
+#Umwandlung in Faktor
+order <- order %>%
+  mutate(bank_to = as.factor(bank_to),
+         k_symbol = as.factor(k_symbol))
+```
+
+Kontrolle der Daten.
+
+```{r}
+glimpse(order)
+summary(order)
+sum(is.na(order))
+length(unique(order$order_id)) == nrow(order)
+```
+
+## trans Datensatz
+
+```{r}
+trans <- read.csv("data/trans.csv", sep=";")
+
+# Type Werte verständlich machen
+trans <- trans %>%
+  mutate(type = case_when(type == "PRIJEM" ~ "credit",
+                          type == "VYDAJ" ~ "withdrawal",
+                          type == "VYBER" ~ "withdrawal in cash"))
+
+# Operation Werte verständlich machen
+trans <- trans %>%
+  mutate(operation = case_when(operation == "VYBER KARTOU" ~ "creditcard withdrawal",
+                               operation == "VKLAD" ~ "credit in cash",
+                               operation == "PREVOD Z UCTU" ~ "collection from another bank",
+                               operation == "VYBER" ~ "withdrawal in cash",
+                               operation == "PREVOD NA UCET" ~ "remittance to another bank"))
+
+
+# K_symbol Werte verständlich machen
+trans <- trans %>%
+  mutate(k_symbol = case_when(k_symbol == "POJISTNE" ~ "insurrance payment",
+                              k_symbol == "SLUZBY" ~ "paymant for statement",
+                              k_symbol == "UROK" ~ "interest credited",
+                              k_symbol == "SANKC. UROK" ~ "sanction interest if negative balance",
+                              k_symbol == "SIPO" ~ "household",
+                              k_symbol == "DUCHOD" ~ "old age pension",
+                              k_symbol == "UVER" ~ "loan payment"))
+
+# Datum umwandeln
+trans$date <- ymd(trans$date)
+
+# Ändern in <fct>
+trans <- trans %>%
+  mutate(type = as.factor(type),
+         operation = as.factor(operation),
+         k_symbol = as.factor(k_symbol),
+         bank = na_if(bank, ""),
+         bank = as.factor(bank))
+
+trans <- trans %>%
+  rename(
+    balance_after_transaction = balance,
+    account_receiver = account,
+    bank_receiver = bank,
+  )
+```
+
+Kontrolle der Änderungen
+
+```{r}
+glimpse(trans)
+summary(trans)
+sum(is.na(trans))
+sum(is.na(trans$trans_id))
+length(unique(trans$trans_id)) == nrow(trans)
+```
+
+```{r}
+ggplot(trans, aes(x = date, fill = as.factor(year(date)))) +
+  geom_histogram(binwidth = 30) +
+  ggtitle("Anzahl Transaktionen pro Monat") +
+  labs(fill = "Jahr",
+       x = "Zeit",
+       y = "Anzahl der Transaktionen")
+```
+```{r}
+
+```
+
+
+
+
+```{r}
+district_shapes <- st_read("data/geo.json")
+district_data <- left_join(district_shapes, district, by = c("name" = "region"))
+
+# Plot a choropleth map of unemployment rate
+plot <- ggplot(data = district_data) +
+  geom_sf(aes(fill = unemploymant_rate_96)) +
+  scale_fill_viridis_c(option = "plasma", na.value = "grey50") +
+  labs(
+    title = "Czech Unemployment Rate by District in 1996",
+    fill = "Rate"
+  ) +
+  theme_minimal()
+
+plot
+ggsave("output/geo.pdf", plot = plot, device = "pdf", width = 5, height = 3)
+
+```
+
+```{r}
+# Update the plot
+plot <- ggplot(loan, aes(x = amount, y = status, fill = status)) +
+  geom_density_ridges(alpha = 0.8) +
+  scale_fill_brewer(palette = "Set3", labels = c(
+    "Finished (Not Paid)",
+    "Finished (Paid)",
+    "Running (In Debt)",
+    "Running (OK)"
+  )) +
+  labs(
+    title = "   Loan Amount Distribution by Status",
+    x = "Amount",
+    fill = "Status"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title.y = element_blank(), # Remove y-axis label
+    axis.text.y = element_blank(),  # Remove y-axis tick labels
+    axis.ticks.y = element_blank()  # Remove y-axis ticks
+  )
+
+# Save the updated plot
+ggsave("output/distributions.pdf", plot = plot, device = "pdf", width = 5, height = 3)
+plot
+```
+
+
+
+```{r}
+
+ggplot(trans, aes(x = amount, y = balance_after_transaction)) +
+  geom_hex() +
+  scale_fill_viridis_c(option = "C", name = "Density") +
+  labs(
+    title = "Hexbin Plot of Transaction Amount and Balance",
+    x = "Transaction Amount",
+    y = "Balance After Transaction"
+  ) +
+  theme_minimal()
+
+```
+```{r}
+# Join `loan` and `district` datasets by district_id
+loan_district <- loan %>%
+  inner_join(accounts, by = c("account_id")) %>%
+  inner_join(district, by = c("district_id_account" = "district_id"))
+
+# Aggregate loan data by district
+loan_summary <- loan_district %>%
+  group_by(district_name, unemploymant_rate_96) %>%
+  summarize(
+    avg_loan_amount = mean(amount, na.rm = TRUE),
+    total_loan_amount = sum(amount, na.rm = TRUE),
+    num_loans = n()
+  )
+
+# Bubble plot
+plot <- ggplot(loan_summary, aes(x = unemploymant_rate_96, y = avg_loan_amount, size = total_loan_amount)) +
+  geom_point(alpha = 0.7, color = "blue") +
+  labs(
+    title = "Relationship Between Unemployment Rate and Loan Amounts",
+    x = "Unemployment Rate (1996)",
+    y = "Average Loan Amount",
+    size = "Total Loan Amount"
+  ) +
+  theme_minimal()
+plot
+ggsave("output/Relations.pdf", plot = plot, device = "pdf", width = 5, height = 3)
+```
+
+```{r}
+# Bubble plot with no text
+plot <- ggplot(loan_summary, aes(x = unemploymant_rate_96, y = avg_loan_amount, size = total_loan_amount)) +
+  geom_point(alpha = 0.7, color = "blue") +
+  theme_minimal() +
+  theme(
+    axis.title = element_blank(),        # Remove axis titles
+    axis.text = element_blank(),         # Remove axis text
+    axis.ticks = element_blank(),        # Remove axis ticks
+    legend.position = "none",            # Remove legend
+    plot.title = element_blank(),        # Remove title
+    plot.subtitle = element_blank(),     # Remove subtitle
+    panel.grid.major = element_line(color = "grey90"),  # Keep grid lines
+    panel.grid.minor = element_blank()   # Remove minor grid lines for a cleaner look
+  )
+
+plot
+
+# Save to PDF
+ggsave("output/raw.pdf", plot = plot, device = "pdf", width = 5, height = 3)
+
+```
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Add a random color column
+set.seed(42)  # Set seed for reproducibility
+loan_summary <- loan_summary %>%
+  mutate(color = sample(c("red", "green", "blue"), n(), replace = TRUE, prob = c(0.1, 0.2, 0.7)))
+
+# Bubble plot with random colors
+plot <- ggplot(loan_summary, aes(x = unemploymant_rate_96, y = avg_loan_amount, size = total_loan_amount, color = color)) +
+  geom_point(alpha = 0.7) +
+  scale_color_identity() +  # Use the predefined colors in the data
+  theme_minimal() +
+  theme(
+    axis.title = element_blank(),        # Remove axis titles
+    axis.text = element_blank(),         # Remove axis text
+    axis.ticks = element_blank(),        # Remove axis ticks
+    legend.position = "none",            # Remove legend
+    plot.title = element_blank(),        # Remove title
+    plot.subtitle = element_blank(),     # Remove subtitle
+    panel.grid.major = element_blank(),  # Keep grid lines
+    panel.grid.minor = element_blank()   # Remove minor grid lines for a cleaner look
+  )
+
+plot
+
+# Save to PDF
+ggsave("output/raw_c.pdf", plot = plot, device = "pdf", width = 5, height = 3)
+
+```
+
+
+
+```{r}
+client_analytical_record <- accounts %>%
+  left_join(disp %>% filter(type == "OWNER") %>%
+              rename_with(~paste0("owner_", .), -account_id), by = "account_id") %>%
+  left_join(disp %>% filter(type == "DISPONENT") %>%
+              rename_with(~paste0("user_", .), -account_id), by = "account_id")
+
+
+client_analytical_record <- client_analytical_record %>%
+  select(-owner_type, -user_type)
+
+client_analytical_record <- client_analytical_record %>%
+  left_join(client, by = c("owner_client_id" = "client_id"))
+
+client_analytical_record <- client_analytical_record %>%
+  rename(
+    owner_birthday = birthday,
+    owner_district_id = district_id_client,
+    owner_sex = sex
+  )
+
+client_analytical_record <- client_analytical_record %>%
+  left_join(client, by = c("user_client_id" = "client_id"))
+
+client_analytical_record <- client_analytical_record %>%
+  rename(
+    user_birthday = birthday,
+    user_district_id = district_id_client,
+    user_sex = sex
+  )
+
+
+client_analytical_record <- client_analytical_record %>%
+  left_join(card, by = c("owner_disp_id" = "disp_id"))%>%
+  rename(
+    card_issued = issued,
+  )
+
+client_analytical_record_no_district <- client_analytical_record
+
+
+client_analytical_record <- client_analytical_record %>%
+  left_join(district, by = c("owner_district_id" = "district_id"))
+
+client_analytical_record <- client_analytical_record %>%
+  left_join(loan, by = "account_id") %>%
+  rename(
+    loan_amount = amount,
+    loan_duration = duration,
+    loan_payments = payments,
+    loan_status = status
+  )
+
+client_analytical_record <- client_analytical_record %>%
+  select(-year.x, -year.y)
+
+# glimpse(client_analytical_record)
+```
+
+
+```{r}
+trans_per_month <- trans %>%
+  mutate(year_month = floor_date(date, unit = "month")) %>%
+  group_by(account_id, year_month) %>%
+  summarise(
+    einnahmen = sum(amount[type == "credit"]),
+    ausgaben = sum(amount[type == "withdrawal in cash" | type == "withdrawal"]), .groups = "drop"
+    )
+```
+
+```{r}
+#Dataframe erstellen um zu überprüfen, bei welchen accounts der amount und die balance nach der Transaktion gleich sind beim erst möglichen Datum.
+kontostand_erster_Zeitpunkt <- trans %>%
+  group_by(account_id) %>%
+  filter(balance_after_transaction == amount) %>%
+  slice_min(date) %>%
+  ungroup()
+
+# Überprüfen, ob jede account_id im Datensatz enthalten ist
+all(unique(trans$account_id) %in% unique(kontostand_erster_Zeitpunkt$account_id))
+```
+
+
+```{r}
+trans_per_month <- trans_per_month %>%
+  group_by(account_id) %>%
+  mutate(kontostand_ende_monat = cumsum(einnahmen - ausgaben)) %>%
+  ungroup()
+```
+
+
+
+```{r}
+#Alle Transaktionen für alle zeiträume erstellen.
+trans_per_month <- trans_per_month %>%
+  complete(year_month = seq.Date(min(year_month), max(year_month), by="month"), account_id) %>%
+  mutate(einnahmen = ifelse(is.na(einnahmen), 0, einnahmen)) %>%
+  mutate(ausgaben = ifelse(is.na(ausgaben), 0, ausgaben)) %>%
+  group_by(account_id) %>%
+  fill(kontostand_ende_monat) %>%
+  ungroup() %>%
+  mutate(kontostand_ende_monat = ifelse(is.na(kontostand_ende_monat), 0, kontostand_ende_monat),
+         year_month = (format(year_month, "%Y-%m"))
+         )
+```
+
+Trans_per_month ändern, so dass jeder Monat ein Attribut wird und der Account nur eine Zeile hat.
+
+```{r}
+trans_per_month_new <- trans_per_month %>%
+  pivot_wider(
+    id_cols = account_id,
+    names_from = year_month,
+    values_from = c(einnahmen, ausgaben, kontostand_ende_monat),
+    names_sort = TRUE
+  ) 
+```
+
+
+## Transaktionen für Accounts mit Kredit für 6 Monate vor Kreditaufname
+
+Als nächstes erstellen wir ein Dataframe, welches die Transaktionen für alle Accounts mit Kredit für die 6 Monate vor Kreditaufnahme enthält. Mit diesem Können wir dann das Verhalten der Kunden vor der Kreditaufnahme analysieren.
+
+```{r}
+accounts_with_loan <- loan$account_id
+loan_dates <- loan$loan_date
+
+transactions_accounts_with_loan <- trans %>%
+  filter(account_id %in% accounts_with_loan) %>%
+  group_by(account_id, date) %>%
+  summarise(
+    einnahmen = sum(amount[type == "credit"]),
+    ausgaben = sum(amount[type == "withdrawal in cash" | type == "withdrawal"]), .groups = "drop"
+    ) %>%
+  complete(date = seq.Date(min(date), max(date), by = "day"), account_id, fill = list(einnahmen = 0, ausgaben = 0)) %>%
+  group_by(account_id) %>%
+  arrange(date) %>%
+  mutate(saldo = cumsum(einnahmen - ausgaben)) %>%
+  fill(saldo, .direction = "downup") %>%
+  ungroup() %>%
+  left_join(loan, by = "account_id") %>%
+  mutate(days_before_loan = as.numeric(loan_date - date),
+         weeks_before_loan = ceiling(days_before_loan / 7)
+         ) %>%
+  filter(days_before_loan >= 0 & days_before_loan <= 182)
+
+# glimpse(transactions_accounts_with_loan)
+# summary(transactions_accounts_with_loan)
+```
+
+
+```{r}
+library(ggplot2)
+
+# Improved Plot for Transaction Count per Month (Single Color)
+ggplot(trans, aes(x = date)) +
+  geom_histogram(binwidth = 30, fill = "dodgerblue", color = "black", alpha = 0.8) +  # Single color for all bars
+  ggtitle("Number of Transactions per Month") +
+  labs(
+    x = "Date",
+    y = "Number of Transactions"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  )
+
+```
+
+
+
+```{r}
+transactions_accounts_with_loan %>%
+  group_by(days_before_loan, status) %>%
+  summarize(median_saldo = median(saldo), .groups = "drop") %>%
+  ggplot(aes(x = days_before_loan, y = median_saldo, group = status, color = status)) +
+  geom_line() +
+  geom_smooth(method = "loess", se = TRUE, aes(fill = status)) +
+  scale_x_reverse() +
+  scale_color_brewer(
+    palette = "Pastel1",
+    labels = c("Abgeschlossen mit Schulden", "Abbezahlt", "Laufend mit Schulden", "Laufend und OK"),
+    name = "Status"
+  ) +
+  scale_fill_brewer(
+    palette = "Pastel1",
+    labels = c("Abgeschlossen mit Schulden", "Abbezahlt", "Laufend mit Schulden", "Laufend und OK"),
+    name = "Status"
+  ) +
+  labs(
+    title = "Verlauf des Kontostandes 6 Monate vor Kreditbeginn",
+    subtitle = "Grupiert nach Kreditstatus",
+    x = "Tage vor Kreditbeginn",
+    y = "Median des Saldos",
+    color = "Kreditstatus",
+    fill = "Kreditstatus"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")  # Adjust legend position if needed
+
+
+```
+```{r}
+transactions_accounts_with_loan %>%
+  group_by(days_before_loan, status) %>%
+  summarize(median_balance = median(saldo), .groups = "drop") %>%
+  ggplot(aes(x = days_before_loan, y = median_balance, group = status, color = status)) +
+  geom_line(size = 1) +  # Increase line size for visibility
+  geom_smooth(method = "loess", se = TRUE, aes(fill = status), alpha = 0.3) +  # Adjust alpha for transparency
+  scale_x_reverse() +
+  scale_color_brewer(
+    palette = "Pastel1",
+    labels = c("Completed with Debt", "Repaid", "Ongoing with Debt", "Ongoing and OK"),
+    name = "Loan Status"
+  ) +
+  scale_fill_brewer(
+    palette = "Pastel1",
+    labels = c("Completed with Debt", "Repaid", "Ongoing with Debt", "Ongoing and OK"),
+    name = "Loan Status"
+  ) +
+  labs(
+    title = "Account Balance Trend 6 Months Before Loan Start",
+    subtitle = "Grouped by Loan Status",
+    x = "Days Before Loan Start",
+    y = "Median Balance",
+    color = "Loan Status",
+    fill = "Loan Status"
+  ) +
+  theme_minimal(base_size = 14) +  # Set larger base font for readability
+  theme(
+    legend.position = "bottom",  # Move legend to the bottom
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12, face = "italic"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
+
+```
+
+```{r}
+transactions_accounts_with_loan %>%
+  group_by(days_before_loan, status) %>%
+  summarize(median_balance = median(saldo), .groups = "drop") %>%
+  ggplot(aes(x = days_before_loan, y = median_balance, color = status, fill = status)) +
+  geom_smooth(method = "loess", se = TRUE, size = 1, alpha = 0.3) +  # Keep smooth lines with SE
+  scale_x_reverse() +
+  scale_color_manual(
+    values = c("firebrick", "dodgerblue", "forestgreen", "goldenrod"),  # Distinct and accessible colors
+    labels = c("Completed with Debt", "Repaid", "Ongoing with Debt", "Ongoing and OK"),
+    name = "Loan Status"
+  ) +
+  scale_fill_manual(
+    values = c("firebrick", "dodgerblue", "forestgreen", "goldenrod"),  # Matching fill colors
+    labels = c("Completed with Debt", "Repaid", "Ongoing with Debt", "Ongoing and OK"),
+    name = "Loan Status"
+  ) +
+  labs(
+    title = "Median Account Balance Trend 6 Months Before Loan Start",
+    subtitle = "Grouped by Loan Status with Smoothed Trends",
+    x = "Days Before Loan Start",
+    y = "Median Account Balance"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "bottom",  # Keep legend below for readability
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 12, face = "italic", hjust = 0.5),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12),
+    panel.grid.minor = element_blank()  # Simplify grid for clarity
+  )
+
+
+```
+
+
+```{r}
+plot <- transactions_accounts_with_loan %>%
+  # Combine statuses into two groups: "Loan OK" and "Loan Not OK"
+  mutate(loan_status_group = case_when(
+    status %in% c("finished_ok", "running_ok") ~ "OK",
+    status %in% c("finished_not_payed", "running_client_in_dept") ~ "Not OK"
+  )) %>%
+  group_by(days_before_loan, loan_status_group) %>%
+  summarize(median_balance = median(saldo), .groups = "drop") %>%
+  ggplot(aes(x = days_before_loan, y = median_balance, group = loan_status_group, color = loan_status_group)) +
+  geom_line(size = 1) +  # Increase line size for visibility
+  geom_smooth(method = "loess", se = TRUE, aes(fill = loan_status_group), alpha = 0.3) +  # Add smooth lines with transparency
+  scale_x_reverse() +
+  scale_color_manual(
+    values = c("OK" = "deepskyblue", "Not OK" = "orangered"),
+    name = "Outcome"
+  ) +
+  scale_fill_manual(
+    values = c("OK" = "deepskyblue", "Not OK" = "orangered"),
+    name = "Outcome"
+  ) +
+  labs(
+    title = "Account Balance 6 Months Before Loan Start",
+    subtitle = "Grouped by Loan Outcome",
+    x = "Days Before Loan Start",
+    y = "Median Balance",
+    color = "Loan Outcome",
+    fill = "Loan Outcome"
+  ) +
+  theme_minimal(base_size = 14) +  # Increase base font size
+  theme(
+    legend.position = "right",  # Move legend to the bottom
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12, face = "italic"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
+
+
+plot
+ggsave("output/okNotOk.pdf", plot = plot, device = "pdf", width = 5, height = 3)
+
+```
+
+```{r}
+transactions_accounts_with_loan %>%
+  # Combine statuses into two groups: "Loan OK" and "Loan Not OK"
+  mutate(loan_status_group = case_when(
+    status %in% c("finished_ok", "running_ok") ~ "Loan OK",
+    status %in% c("finished_not_payed", "running_client_in_dept") ~ "Loan Not OK"
+  )) %>%
+  group_by(days_before_loan, loan_status_group) %>%
+  summarize(median_balance = median(saldo), .groups = "drop") %>%
+  ggplot(aes(x = days_before_loan, y = median_balance, group = loan_status_group, color = loan_status_group)) +
+  geom_line(size = 1.2) +  # Increase line size for visibility
+  geom_smooth(method = "loess", se = TRUE, aes(fill = loan_status_group), alpha = 0.2) +  # Add smooth curves with reduced transparency
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 0.7) +  # Vertical reference line at loan start
+  scale_x_reverse(breaks = seq(0, 180, by = 30)) +  # Add ticks every 30 days
+  scale_y_continuous(limits = c(20000, 45000), breaks = seq(20000, 45000, by = 5000)) +  # Adjust y-axis range
+  scale_color_manual(
+    values = c("Loan OK" = "deepskyblue", "Loan Not OK" = "orangered"),
+    labels = c("OK", "Not OK"),
+    name = "Loan Status"
+  ) +
+  scale_fill_manual(
+    values = c("Loan OK" = "deepskyblue", "Loan Not OK" = "orangered"),
+    labels = c("OK", "Not OK"),
+    name = "Loan Status"
+  ) +
+  labs(
+    title = "Account Balance Trend 6 Months Before Loan Start",
+    subtitle = "Grouped by Loan Outcome",
+    x = "Days Before Loan Start",
+    y = "Median Balance",
+    color = "Loan Outcome",
+    fill = "Loan Outcome",
+  ) +
+  annotate("text", x = 50, y = 30000, label = "Dip in Balance", color = "orangered", size = 4, hjust = -0.1) +  # Annotation example
+  theme_minimal(base_size = 14) +  # Set a larger base font size
+  theme(
+    legend.position = "bottom",  # Move legend to the bottom
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    plot.title = element_text(size = 18, face = "bold"),
+    plot.subtitle = element_text(size = 14, face = "italic"),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14, face = "bold"),
+    plot.caption = element_text(size = 10, face = "italic", hjust = 1)
+  )
+
+```
+
+
+
+```{r}
+transactions_accounts_with_loan %>%
+  distinct(loan_id, .keep_all = TRUE) %>%
+  ggplot(aes(x = as.factor(duration), fill = factor(status, levels = c("running_client_in_dept", "finished_not_payed", "running_ok", "finished_ok")))) +
+  geom_bar() +
+  scale_fill_brewer(
+    palette = "Pastel1",
+    labels = c("Laufend mit Schulden", "Nicht bezahlt", "Laufend OK", "Abbezahlt"),
+    name = "Kreditstatus"
+  ) +
+  labs(
+    title = "Verteilung der Kreditlaufzeiten nach Status",
+    subtitle = "Anzahl der Kredite gruppiert nach Laufzeit und aktuellem Status",
+    x = "Laufzeit in Monaten",
+    y = "Anzahl der Kredite",
+    fill = "Kreditstatus"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(hjust = 1)) # X-Achsenbeschriftungen bei Bedarf drehen
+
+```
+```{r}
+plot <- transactions_accounts_with_loan %>%
+  distinct(loan_id, .keep_all = TRUE) %>%
+  ggplot(aes(x = as.factor(duration), fill = factor(status, levels = c("running_client_in_dept", "finished_not_payed", "running_ok", "finished_ok")))) +
+  geom_bar() +
+  scale_fill_brewer(
+    palette = "Pastel1",
+    labels = c("Running with Debt", "Not Paid", "Running OK", "Paid Off"),
+    name = "Loan Status"
+  ) +
+  labs(
+    title = "Distribution of Loan Durations by Status",
+    subtitle = "Number of loans grouped by duration and current status",
+    x = "Duration (Months)",
+    y = "Number of Loans",
+    fill = "Loan Status"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(hjust = 1),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
+ggsave("output/verhältniss.pdf", plot = plot, device = "pdf", width = 5, height = 3)
+```
+
+
+```{r}
+# Removing columns that start with "loan_"
+client_analytical_record_no_district <- client_analytical_record_no_district %>%
+  select(-starts_with("loan_"))
+
+# Ersrellen des df der counts ohne Kredit
+transactions_accounts_no_loan_for_training <- trans %>%
+  filter(!(account_id %in% loan$account_id)) %>%
+  filter(date >= as.Date("1998-01-01") & date < as.Date("1998-07-01")) %>%
+  group_by(account_id, date) %>%
+  summarise(
+    einnahmen = sum(amount[type == "credit"]),
+    ausgaben = sum(amount[type == "withdrawal in cash" | type == "withdrawal"]), .groups = "drop"
+    ) %>%
+  complete(date = seq.Date(min(date), max(date), by = "day"), account_id, fill = list(einnahmen = 0, ausgaben = 0)) %>%
+  group_by(account_id) %>%
+  arrange(date) %>%
+  mutate(saldo = cumsum(einnahmen - ausgaben)) %>%
+  fill(saldo, .direction = "downup") %>%
+  ungroup()
+
+df_grouped_metrics_no_loan_for_training <- transactions_accounts_no_loan_for_training %>%
+  group_by(account_id) %>%
+  summarize(
+    mean_einnahmen = mean(einnahmen, na.rm = TRUE),
+    sd_einnahmen = sd(einnahmen, na.rm = TRUE),
+    mean_ausgaben = mean(ausgaben, na.rm = TRUE),
+    sd_ausgaben = sd(ausgaben, na.rm = TRUE),
+    avg_change = mean(diff(saldo)),
+    sd_change = sd(diff(saldo)),
+    mean_saldo = mean(saldo, na.rm = TRUE),
+    sd_saldo = sd(saldo, na.rm = TRUE),
+    start_saldo = first(saldo),
+    end_saldo = last(saldo),
+    growth = end_saldo - start_saldo,
+    max_drawdown = min(diff(saldo)),
+    .groups = "drop"
+  ) %>%
+  select(-start_saldo, -end_saldo) %>%
+  mutate(loan = 0)
+
+
+# Ersrellen des df der counts mit Kredit
+df_grouped_metrics_with_loan <- transactions_accounts_with_loan %>%
+  group_by(account_id) %>%
+  summarize(
+    mean_einnahmen = mean(einnahmen, na.rm = TRUE),
+    sd_einnahmen = sd(einnahmen, na.rm = TRUE),
+    mean_ausgaben = mean(ausgaben, na.rm = TRUE),
+    sd_ausgaben = sd(ausgaben, na.rm = TRUE),
+    avg_change = mean(diff(saldo)),
+    sd_change = sd(diff(saldo)),
+    mean_saldo = mean(saldo, na.rm = TRUE),
+    sd_saldo = sd(saldo, na.rm = TRUE),
+    start_saldo = first(saldo),
+    end_saldo = last(saldo),
+    growth = end_saldo - start_saldo,
+    max_drawdown = min(diff(saldo)),
+    .groups = "drop"
+  ) %>%
+  select(-start_saldo, -end_saldo) %>%
+  mutate(loan = 1)
+
+# zusammenfügen der beiden df
+df_grouped_metrics <- bind_rows(df_grouped_metrics_no_loan_for_training, df_grouped_metrics_with_loan)%>%
+  mutate(loan = as.factor(loan)) %>%
+  left_join(client_analytical_record, by = "account_id") %>%
+  select(-contains("loan_"), -unemploymant_rate_95, -crimes_per_1000_1995, -commited_crimes_95, -district_name) %>%
+  mutate(
+    has_user = ifelse(is.na(user_birthday), 0, 1),
+    owner_age = 1999 - year(owner_birthday),
+    opening_year = year(opening_date),
+    card_type = addNA(card_type),  
+    card_type = fct_expand(card_type, "NoCard"),  # Add "NoCard" as a level
+    card_type = fct_recode(card_type, "NoCard" = NA_character_)
+    ) %>%
+  pivot_wider(names_from = owner_sex, values_from = owner_sex,
+              values_fill = list(owner_sex = 0),
+              values_fn = list(owner_sex = length)) %>%
+  pivot_wider(names_from = frequency_of_statements, values_from = frequency_of_statements,
+              values_fill = list(frequency_of_statements = 0),
+              values_fn = list(frequency_of_statements = length)) %>%
+  
+  pivot_wider(names_from = card_type, values_from = card_type,
+              values_fill = list(card_type = 0),
+              values_fn = list(card_type = length)) %>%
+  select(-user_birthday, -card_id, -user_disp_id, -user_client_id, -owner_client_id, -owner_birthday, -user_district_id, -user_sex, -card_issued, -opening_date, -owner_disp_id)
+
+glimpse(df_grouped_metrics)
+```
+
+## Training und Auswertung des Models
+
+Mit dem erstellten Dataframe trainieren wir ein Random forest Model. Dafür splitten wir die daten und verwenden 80% für das Training und 20% für das Testen. Die Metriken Accuracy, Kappa und F1 werden ausgegeben.
+
+```{r}
+set.seed(123)
+splitIndex_13 <- createDataPartition(df_grouped_metrics$loan, p = .8, list = FALSE)
+train_set_13 <- df_grouped_metrics[splitIndex_13, ]
+test_set_13 <- df_grouped_metrics[-splitIndex_13, ]
+
+model_13 <- randomForest(loan ~ . - account_id, data = train_set_13, method = "rf")
+
+predictions_13 <- predict(model_13, test_set_13)
+
+conf_matrix <- confusionMatrix(predictions_13, test_set_13$loan, positive = "1")
+
+printSelectedMetrics <- function(conf_matrix) {
+  accuracy <- conf_matrix$overall["Accuracy"]
+  kappa <- conf_matrix$overall["Kappa"]
+  f1_score <- conf_matrix$byClass["F1"]
+  cat("Accuracy:", accuracy, "\n")
+  cat("Kappa:", kappa, "\n")
+  cat("F1 Score:", f1_score, "\n")
+}
+
+```
+
+Wir haben uns bei der Auswertung der Konfusionsmatrix auf folgende Kennzahlen beschränkt. Der Accuracy, welche die True Positive sowie negative zusammenzählt und dann durch die anzahl der Beobachtungen teil, Der F1-Score welcher besser geeignet, um auch bei unverteilten Daten eine präzise Angabe zu treffen, Und dem Kappa, dieser Wert gibt an, wie gross der unterschied vom Model im Vergleich zu einer zufälligen Auswertung aussieht.
+
+```{r}
+printSelectedMetrics(conf_matrix)
+```
+
+Anschliessend haben wir die wichtigsten Variablen des Models ausgegeben. Diese sind nach der MeanDecreaseGini sortiert. Dieser Wert gibt an, wie stark die Variable die Gini Impurity reduziert. Je höher der Wert desto wichtiger ist die Variable für das Model. Wir sehen das die Wichtigsten Variablen mit den erstellten Kennwerten des Verhaltens zu tun haben, die Variablen der Kreditkarten Distrikte und der Geschlechter sind nicht so wichtig.
+
+```{r}
+getTopNVarImportance <- function(model, n) {
+  # Extract variable importance
+  var_importance <- importance(model)
+
+  # Convert to data frame and sort by MeanDecreaseGini
+  top_vars <- as.data.frame(var_importance) %>%
+    rownames_to_column(var = "variable") %>%
+    arrange(desc(MeanDecreaseGini)) %>%
+    head(n)
+
+  # Print the top n variables
+  print(top_vars)
+}
+
+getTopNVarImportance(model_13, 40)
+```
+
+## Erstellen des Dataframs für die Predictions
+
+Nach dem gleichen Schema wie bei dem Dataframe für das Training erstellen wir eines für die Predictions, mit dem Unterschied das wir für die daten nur Accounts ohne Kredit und das Verhalten der letzten 6 Monate verwenden. Somit können wir das aktuelle Verhalten der Kunden vergleichen.
+
+```{r}
+transactions_accounts_no_loan <- trans %>%
+  filter(!(account_id %in% loan$account_id)) %>%
+  filter(date >= as.Date("1998-07-01")) %>%
+  group_by(account_id, date) %>%
+  summarise(
+    einnahmen = sum(amount[type == "credit"]),
+    ausgaben = sum(amount[type == "withdrawal in cash" | type == "withdrawal"]), .groups = "drop"
+    ) %>%
+  complete(date = seq.Date(min(date), max(date), by = "day"), account_id, fill = list(einnahmen = 0, ausgaben = 0)) %>%
+  group_by(account_id) %>%
+  arrange(date) %>%
+  mutate(saldo = cumsum(einnahmen - ausgaben)) %>%
+  fill(saldo, .direction = "downup") %>%
+  ungroup()
+
+
+df_grouped_metrics_no_loan_today <- transactions_accounts_no_loan %>%
+  group_by(account_id) %>%
+  summarize(
+    mean_einnahmen = mean(einnahmen, na.rm = TRUE),
+    sd_einnahmen = sd(einnahmen, na.rm = TRUE),
+    mean_ausgaben = mean(ausgaben, na.rm = TRUE),
+    sd_ausgaben = sd(ausgaben, na.rm = TRUE),
+    avg_change = mean(diff(saldo)),
+    sd_change = sd(diff(saldo)),
+    mean_saldo = mean(saldo, na.rm = TRUE),
+    sd_saldo = sd(saldo, na.rm = TRUE),
+    start_saldo = first(saldo),
+    end_saldo = last(saldo),
+    growth = end_saldo - start_saldo,
+    max_drawdown = min(diff(saldo)),
+    .groups = "drop"
+  ) %>%
+  select(-start_saldo, -end_saldo)  %>%
+  left_join(client_analytical_record, by = "account_id") %>%
+  select(-contains("loan_"), -unemploymant_rate_95, -crimes_per_1000_1995, -commited_crimes_95, -district_name) %>%
+  mutate(
+    has_user = ifelse(is.na(user_birthday), 0, 1),
+    owner_age = 1999 - year(owner_birthday),
+    opening_year = year(opening_date),
+    card_type = addNA(card_type),  # Add NA as a level if it's not already
+    card_type = fct_expand(card_type, "NoCard"),  # Add "NoCard" as a level
+    card_type = fct_recode(card_type, "NoCard" = NA_character_)
+    ) %>%
+  pivot_wider(names_from = owner_sex, values_from = owner_sex,
+              values_fill = list(owner_sex = 0),
+              values_fn = list(owner_sex = length)) %>%
+  pivot_wider(names_from = frequency_of_statements, values_from = frequency_of_statements,
+              values_fill = list(frequency_of_statements = 0),
+              values_fn = list(frequency_of_statements = length)) %>%
+  
+  pivot_wider(names_from = card_type, values_from = card_type,
+              values_fill = list(card_type = 0),
+              values_fn = list(card_type = length)) %>%
+  select(-user_birthday, -card_id, -user_disp_id, -user_client_id, -owner_client_id, -owner_birthday, -user_district_id, -user_sex, -card_issued, -opening_date, -owner_disp_id)
+
+
+```
+
+## Rechnen der Predictions
+
+Nun können wir die Predictions für die Kunden ohne Kredit erstellen. zusätzlich sortieren wir sie auch nach der Wahrscheinlichkeit das der Kunde einen Kredit aufnimmt. Somit können wir auch eine bestimmte Anzahl Kunden mit der höchsten Wahrscheinlichkeit für ein Angebot auswählen.
+
+```{r}
+# Predict using the Random Forest model on the new data
+predicted_probabilities <- predict(model_13, df_grouped_metrics_no_loan_today, type = "prob")
+
+# If you need to add these predictions as a new column to your df_grouped_metrics_no_loan_today dataframe:
+df_grouped_metrics_no_loan_today$predictions <- ifelse(predicted_probabilities[, "1"] > 0.5, 1, 0)
+# Add the predicted probabilities as new columns to your dataframe
+df_grouped_metrics_no_loan_today$prob_0 <- predicted_probabilities[, "0"]
+df_grouped_metrics_no_loan_today$prob_1 <- predicted_probabilities[, "1"]
+
+
+# Sort the dataframe by the predicted probabilities for class 1 in descending order
+df_sorted_by_prob <- df_grouped_metrics_no_loan_today %>%
+  arrange(desc(prob_1)) %>%
+  select(account_id, prob_1)
+
+# Select the top n results
+top_n_results <- head(df_sorted_by_prob, 10)
+
+# View the top n results
+print(top_n_results)
+```
+
+## Visuelle Darstellung der Predictions
+
+Um das Visuell darzustellen haben wir uns entschieden das Verhalten Der Kunden über die letzten 6 Monate zu vergleichen. Wir vergleichen dazu die Kunden, die bereits einen Kredit hatten mit denen die gute oder schlechte Kandidaten sind. in diesen Plots ist zu sehen das die Kunden die gute Kandidaten sind sich gegen Ende sehr ähnlich verhalten wie die Kunden die bereits einen Kredit haben und auch ihre Raten zahlen.
+
+```{r}
+ids_predicted_yes <- df_grouped_metrics_no_loan_today %>%
+  filter(predictions == 1) %>%
+  select(account_id)
+
+ids_predicted_no <- df_grouped_metrics_no_loan_today %>%
+  filter(predictions == 0) %>%
+  select(account_id)
+
+
+transactions_accounts_no_loan <- trans %>%
+  filter(account_id %in% df_grouped_metrics_no_loan_today$account_id) %>%
+  filter(date >= as.Date("1998-07-01")) %>%
+  group_by(account_id, date) %>%
+  summarise(
+    einnahmen = sum(amount[type == "credit"]),
+    ausgaben = sum(amount[type == "withdrawal in cash" | type == "withdrawal"]), .groups = "drop"
+    ) %>%
+  complete(date = seq.Date(min(date), max(date), by = "day"), account_id, fill = list(einnahmen = 0, ausgaben = 0)) %>%
+  group_by(account_id) %>%
+  arrange(date) %>%
+  mutate(saldo = cumsum(einnahmen - ausgaben)) %>%
+  fill(saldo, .direction = "downup") %>%
+  ungroup() %>%
+  mutate(predictions = ifelse(account_id %in% ids_predicted_yes$account_id, 1, 0),
+         predictions = as.factor(predictions))
+
+
+test1 <- transactions_accounts_with_loan %>%
+  mutate(predictions = as.factor(-1)) %>%
+  select(account_id, einnahmen, ausgaben, saldo, days_before_loan, predictions)
+ 
+test2 <- transactions_accounts_no_loan %>%
+  mutate(days_before_loan = as.numeric(as.Date("1999-01-01") - date)) %>%
+  select(!date)
+ 
+plot_df <- bind_rows(test1, test2)
+ 
+plot_df %>%
+  group_by(days_before_loan, predictions) %>%
+  summarize(gemitteltes_saldo = mean(saldo), .groups = "drop") %>%
+  ggplot(aes(x = days_before_loan, y = gemitteltes_saldo, group = predictions, color = as.factor(predictions))) +
+  geom_line() +
+  geom_smooth(method = "loess", se = TRUE, aes(fill = as.factor(predictions))) +
+  scale_color_manual(values = c("green","orangered","deepskyblue"), 
+                     labels = c("Bereits", "Nein", "Ja"),
+                     name = "Kreditkandidaten") +
+  scale_fill_manual(values = c("green","orangered","deepskyblue"), 
+                    labels = c("Bereits", "Nein", "Ja"),
+                    name = "Kreditkandidaten") +
+  labs(title = "Durchschnittlicher Kontostand im halben letzten Jahr",
+       x = "Tage vor dem Kredit",
+       y = "Kontostand") +
+  scale_x_reverse() +
+  theme_minimal()
+ 
+plot_df %>%
+  group_by(days_before_loan, predictions) %>%
+  summarize(median_saldo = median(saldo), .groups = "drop") %>%
+  ggplot(aes(x = days_before_loan, y = median_saldo, group = predictions, color = as.factor(predictions))) +
+  geom_line() +
+  geom_smooth(method = "loess", se = TRUE, aes(fill = as.factor(predictions))) +
+  scale_color_manual(values = c("green","orangered","deepskyblue"), 
+                     labels = c("Bereits", "Nein", "Ja"),
+                     name = "Kreditkandidaten") +
+  scale_fill_manual(values = c("green","orangered","deepskyblue"), 
+                    labels = c("Bereits", "Nein", "Ja"),
+                    name = "Kreditkandidaten") +
+  labs(title = "Median des Kontostandes im letzten halben Jahr",
+       x = "Tage vor dem Kredit",
+       y = "Kontostand") +
+  scale_x_reverse() +
+  theme_minimal()
+ 
+plot_df %>%
+  group_by(days_before_loan, predictions) %>%
+  summarize(gemittelte_einnahmen = mean(einnahmen), .groups = "drop") %>%
+  ggplot(aes(x = days_before_loan, y = gemittelte_einnahmen, group = predictions, color = as.factor(predictions))) +
+  geom_line() +
+  geom_smooth(method = "loess", se = TRUE, aes(fill = as.factor(predictions))) +
+  scale_color_manual(values = c("green","orangered","deepskyblue"), 
+                     labels = c("Bereits", "Nein", "Ja"),
+                     name = "Kreditkandidaten") +
+  scale_fill_manual(values = c("green","orangered","deepskyblue"), 
+                    labels = c("Bereits", "Nein", "Ja"),
+                    name = "Kreditkandidaten") +
+  labs(title = "Durchschnitliche Einnahmen im letzten halben Jahr",
+       x = "Tage vor dem Kredit",
+       y = "Einnahmen") +
+  scale_x_reverse() +
+  theme_minimal()
+ 
+plot_df %>%
+  group_by(days_before_loan, predictions) %>%
+  summarize(gemittelte_ausgaben = mean(ausgaben), .groups = "drop") %>%
+  ggplot(aes(x = days_before_loan, y = gemittelte_ausgaben, group = predictions, color = as.factor(predictions))) +
+  geom_line() +
+  geom_smooth(method = "loess", se = TRUE, aes(fill = as.factor(predictions))) +
+  scale_color_manual(values = c("green","orangered","deepskyblue"), 
+                     labels = c("Bereits", "Nein", "Ja"),
+                     name = "Kreditkandidaten") +
+  scale_fill_manual(values = c("green","orangered","deepskyblue"), 
+                    labels = c("Bereits", "Nein", "Ja"),
+                    name = "Kreditkandidaten") +
+  labs(title = "Durchschnitliche Ausgaben im letzten halben Jahr",
+       x = "Tage vor dem Kredit",
+       y = "Ausgaben") +
+  scale_x_reverse() +
+  theme_minimal()
+```
+```{r}
+plot <- plot_df %>%
+  group_by(days_before_loan, predictions) %>%
+  summarize(mean_balance = mean(saldo), .groups = "drop") %>%
+  ggplot(aes(x = days_before_loan, y = mean_balance, group = predictions, color = as.factor(predictions))) +
+  geom_line(size = 1) +  # Increase line size for better visibility
+  geom_smooth(method = "loess", se = TRUE, aes(fill = as.factor(predictions)), alpha = 0.3) +  # Adjust alpha for better transparency
+  scale_color_manual(values = c("green", "orangered", "deepskyblue"), 
+                     labels = c("Existing Loans", "No", "Yes"),
+                     name = "Loan Candidates") +
+  scale_fill_manual(values = c("green", "orangered", "deepskyblue"), 
+                    labels = c("Existing Loans", "No", "Yes"),
+                    name = "Loan Candidates") +
+  labs(title = "Average Account Balance in the Last Six Months",
+       subtitle = "Based on Loan Approval Status",
+       x = "Days Before Loan Application",
+       y = "Account Balance",
+       color = "Loan Status",
+       fill = "Loan Status") +
+  scale_x_reverse(breaks = seq(0, 180, by = 30)) +  # Add ticks for clarity
+  theme_minimal(base_size = 14) +  # Set a larger base size for improved readability
+  theme(
+    legend.position = "top",  # Move legend to the top
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12, face = "italic"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
+
+plot
+ggsave("output/Principles.pdf", plot = plot, device = "pdf", width = 7, height = 5)
+
+```
+```{r}
+library(ggplot2)
+
+# Example data (ordered by value)
+data <- data.frame(
+  category = c("D", "C", "B", "A"),
+  value = c(40, 30, 20, 10)
+)
+
+# Enhanced Polar Plot
+plot <- ggplot(data, aes(x = category, y = value, fill = category)) +
+  geom_bar(stat = "identity", color = "white", size = 0.5) +  # Add white borders for distinction
+  geom_text(aes(label = value), position = position_stack(vjust = 0.5), color = "black", size = 4) +
+  coord_polar(theta = "x") +
+  scale_fill_manual(values = c("deepskyblue", "mediumseagreen", "goldenrod", "tomato")) +
+  labs(
+    title = "Polar Coordinate Chart",
+    x = NULL,
+    y = NULL
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_blank(),  # Remove radial grid labels for simplicity
+    axis.text.x = element_text(size = 12, face = "bold"),
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 12, face = "italic")
+  )
+
+
+ggsave("output/polar.pdf", plot = plot, device = "pdf", width = 3, height = 3)
+
+```
+
+
+```{r}
+# Example data
+data <- data.frame(
+  angle = seq(0, 2 * pi, length.out = 4),
+  radius = runif(4
+                 , 0, 10)
+)
+
+# Polar scatter plot
+plot <- ggplot(data, aes(x = angle, y = radius)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  coord_polar(theta = "x") +
+  labs(
+    title = "Scatter Plot in Polar Coordinates",
+    legend = NULL
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot
+```
+```{r}
+# Updated Scatter Plot in Polar Coordinates
+plot <- ggplot(data, aes(x = angle, y = radius)) +
+  geom_point(color = "blue", size = 4) +  # Increase point size
+  coord_polar(theta = "x") +
+  labs(
+    title = "Plot in Polar Coordinates"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title = element_blank(),        # Remove axis titles
+    axis.text = element_blank(),         # Remove axis text
+    axis.ticks = element_blank(),        # Remove axis ticks
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold")  # Keep only the title
+  )
+ggsave("output/polar.pdf", plot = plot, device = "pdf", width = 5, height = 5)
+plot
+```
+
